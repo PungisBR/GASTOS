@@ -150,6 +150,11 @@ textarea.note-input::placeholder{color:var(--text3)}
   .add-extra-row{flex-wrap:wrap}.add-extra-amt{width:80px}
   .save-month-btn{margin-left:0;margin-top:4px;width:100%}
 }
+
+.add-item-btn{background:var(--surface);border:.5px dashed var(--border2);border-radius:var(--radius);padding:14px 14px 12px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text3);transition:all .15s;user-select:none}
+.add-item-btn:active{background:var(--blue-bg);border-color:var(--blue);color:var(--blue)}
+.item-del-btn{width:24px;height:24px;border-radius:50%;border:.5px solid var(--border2);background:var(--surface2);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:.7;flex-shrink:0}
+.item-del-btn:active{background:var(--red-bg);opacity:1}
 </style>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -404,28 +409,14 @@ const MONTHS=[
   {key:'2027-10',label:'Octubre 2027'},{key:'2027-11',label:'Noviembre 2027'},{key:'2027-12',label:'Diciembre 2027'},
 ];
 
-// Built-in base data per month (from Excel)
-const BUILTIN={};
-const BASE_FALLBACK={hipoteca:0,gasolina:0,internet:0,agua:0,luz:0,escalera:0,prestamo:0,moto:0,alarma:0,comida:0,seguro:0,nomina:0};
-
-const EXPENSES=[
-  {key:'hipoteca',label:'Hipoteca',emoji:'🏠'},{key:'gasolina',label:'Gasolina',emoji:'⛽'},
-  {key:'internet',label:'Internet/móvil',emoji:'📡'},{key:'agua',label:'Agua',emoji:'💧'},
-  {key:'luz',label:'Luz',emoji:'💡'},{key:'escalera',label:'Escalera',emoji:'🏢'},
-  {key:'prestamo',label:'Préstamo',emoji:'💳'},{key:'moto',label:'Pago moto',emoji:'🏍️'},
-  {key:'alarma',label:'Alarma',emoji:'🔒'},{key:'comida',label:'Comida',emoji:'🛒'},
-  {key:'seguro',label:'Seguro vida',emoji:'🛡️'},
-];
-const INCOME_ITEMS=[{key:'nomina',label:'Nómina',emoji:'💼'}];
-const ALL_ITEMS=[...INCOME_ITEMS,...EXPENSES];
-
 let idx=4;
 let editMode=false;
-let editScope='month'; // 'month' | 'forward' | 'all'
+let editScope='month';
 
-// Storage keys
+// ── Storage ────────────────────────────────────────────────────────────────
 function stKey(k){return 'hipo_v3_'+k}
-function overrideKey(k){return 'hipo_ov_'+k} // per-month overrides
+function overrideKey(k){return 'hipo_ov_'+k}
+function catalogKey(){return 'hipo_catalog'}
 
 function load(k){
   try{const s=localStorage.getItem(stKey(k));return s?JSON.parse(s):{paid:{},xInc:[],xExp:[],nota:''}}
@@ -439,8 +430,6 @@ function save(k,s){
   }catch(e){}
   if(window._saveToCloud) window._saveToCloud();
 }
-
-// Get overrides for a month (user-edited values)
 function loadOverride(k){
   try{const s=localStorage.getItem(overrideKey(k));return s?JSON.parse(s):{}}
   catch(e){return{}}
@@ -450,16 +439,35 @@ function saveOverride(k,ov){
   if(window._saveToCloud) window._saveToCloud();
 }
 
-// Get effective data for a month: builtin merged with overrides
+// ── Dynamic catalog of income/expense items ────────────────────────────────
+const DEFAULT_CATALOG = {
+  income: [{key:'nomina',label:'Nómina',emoji:'💼'}],
+  expenses: []
+};
+const EMOJI_LIST=['🏠','⛽','📡','💧','💡','🏢','💳','🏍️','🔒','🛒','🛡️','🚗','✈️','🎓','💊','📱','🐾','🎬','🏋️','💰','🧾','🔧','🌐','🍔','☕'];
+
+function loadCatalog(){
+  try{
+    const s=localStorage.getItem(catalogKey());
+    if(s){const c=JSON.parse(s);return{income:c.income||DEFAULT_CATALOG.income,expenses:c.expenses||DEFAULT_CATALOG.expenses};}
+  }catch(e){}
+  return JSON.parse(JSON.stringify(DEFAULT_CATALOG));
+}
+function saveCatalog(cat){
+  try{localStorage.setItem(catalogKey(),JSON.stringify(cat));}catch(e){}
+  if(window._saveToCloud) window._saveToCloud();
+}
+
+// ── Effective data for a month ─────────────────────────────────────────────
 function getMD(k){
-  const base=BUILTIN[k]||BASE_FALLBACK;
-  const ov=loadOverride(k);
-  return Object.assign({},base,ov);
+  return loadOverride(k);
 }
 
 function fmt(n){return n.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'}
 function sumList(arr){return (arr||[]).reduce((a,b)=>a+(parseFloat(b.amt)||0),0)}
+function genKey(){return 'item_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)}
 
+// ── Extra lists ────────────────────────────────────────────────────────────
 function renderExtraList(listEl,items,colorClass,mKey,listKey){
   listEl.innerHTML='';
   if(!items||!items.length){
@@ -477,111 +485,112 @@ function renderExtraList(listEl,items,colorClass,mKey,listKey){
   });
 }
 
-// Build a normal (view mode) item card
+// ── Item cards ─────────────────────────────────────────────────────────────
 function makeViewItem(def,type,checked,amt){
   const div=document.createElement('div');
   div.className='item '+type+(checked?' checked':'');
   const zc=amt===0?' zero':'';
   div.innerHTML=`<div class="item-emoji">${def.emoji}</div><div class="item-name">${def.label}</div><div class="item-amount${zc}">${amt>0?fmt(amt):'—'}</div><div class="item-check">&#10003;</div>`;
-  if(amt>0){
-    div.addEventListener('click',()=>{
-      const mKey=MONTHS[idx].key,s=load(mKey);
-      s.paid[def.key]=!s.paid[def.key];
-      save(mKey,s);div.classList.toggle('checked');render(false);
-    });
-  }else{div.style.opacity='.45';div.style.cursor='default'}
+  // Always allow clicking to mark/unmark (even at 0, user may want to track)
+  div.addEventListener('click',()=>{
+    const mKey=MONTHS[idx].key,s=load(mKey);
+    s.paid[def.key]=!s.paid[def.key];
+    save(mKey,s);div.classList.toggle('checked');render(false);
+  });
   return div;
 }
 
-// Build an edit mode item card
-function makeEditItem(def,type,currentAmt){
+function makeEditItem(def,type,currentAmt,catalog){
   const div=document.createElement('div');
   div.className='item '+type+' edit-mode';
   div.dataset.key=def.key;
   const displayVal=currentAmt>0?currentAmt.toFixed(2):'';
-  div.innerHTML=`<div class="item-emoji">${def.emoji}</div><div class="item-name">${def.label}</div><input class="item-edit-input" type="number" min="0" step="0.01" value="${displayVal}" placeholder="0.00" data-key="${def.key}"><div class="item-edit-sym">€</div>`;
+  div.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div class="item-emoji" style="margin:0;font-size:18px">${def.emoji}</div>
+      <button class="item-del-btn" data-key="${def.key}" data-type="${type}" title="Eliminar partida">🗑</button>
+    </div>
+    <div class="item-name">${def.label}</div>
+    <input class="item-edit-input" type="number" min="0" step="0.01" value="${displayVal}" placeholder="0.00" data-key="${def.key}">
+    <div class="item-edit-sym">€</div>`;
+  div.querySelector('.item-del-btn').addEventListener('click',(e)=>{
+    e.stopPropagation();
+    const cat=loadCatalog();
+    if(type==='income') cat.income=cat.income.filter(i=>i.key!==def.key);
+    else cat.expenses=cat.expenses.filter(i=>i.key!==def.key);
+    saveCatalog(cat);
+    render(true);
+  });
   return div;
 }
 
-window._renderApp=function(){render(true);};
-function render(rebuild=true){
-  const mKey=MONTHS[idx].key,d=getMD(mKey),s=load(mKey);
-  if(rebuild){
-    document.getElementById('month-sel').value=mKey;
-    document.getElementById('inp-nota').value=s.nota||'';
-    if(s._saved)document.getElementById('last-saved').textContent=s._saved;
+// ── Add item modal ─────────────────────────────────────────────────────────
+function showAddItemModal(type){
+  const existing=document.getElementById('add-item-modal');
+  if(existing) existing.remove();
+  const modal=document.createElement('div');
+  modal.id='add-item-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;display:flex;align-items:flex-end;justify-content:center';
+  modal.innerHTML=`
+    <div style="background:var(--surface);border-radius:20px 20px 0 0;padding:24px 20px 36px;width:100%;max-width:500px;box-shadow:0 -4px 40px rgba(0,0,0,.2)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <h3 style="font-size:16px;font-weight:600">Añadir ${type==='income'?'ingreso':'gasto'} fijo</h3>
+        <button id="modal-close" style="width:30px;height:30px;border-radius:50%;border:.5px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">×</button>
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:6px">Nombre</label>
+        <input id="modal-name" type="text" placeholder="Ej: Suscripción Netflix" style="width:100%;padding:10px 12px;border:.5px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:14px;font-family:inherit">
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:6px">Importe mensual (€)</label>
+        <input id="modal-amt" type="number" min="0" step="0.01" placeholder="0.00" style="width:100%;padding:10px 12px;border:.5px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:14px;font-family:inherit;text-align:right">
+      </div>
+      <div style="margin-bottom:20px">
+        <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:8px">Icono</label>
+        <div id="emoji-picker" style="display:flex;flex-wrap:wrap;gap:8px">${EMOJI_LIST.map(e=>`<button class="emoji-opt" data-e="${e}" style="width:38px;height:38px;border-radius:8px;border:.5px solid var(--border);background:var(--surface2);font-size:18px;cursor:pointer">${e}</button>`).join('')}</div>
+      </div>
+      <button id="modal-save" style="width:100%;padding:12px;border-radius:var(--radius-sm);border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:600;cursor:pointer">Añadir partida</button>
+    </div>`;
+  document.body.appendChild(modal);
 
-    const ig=document.getElementById('income-grid');ig.innerHTML='';
-    const eg=document.getElementById('expense-grid');eg.innerHTML='';
+  let selectedEmoji=type==='income'?'💼':'💶';
+  modal.querySelectorAll('.emoji-opt').forEach(btn=>{
+    if(btn.dataset.e===selectedEmoji) btn.style.background='var(--blue-bg)',btn.style.borderColor='var(--blue)';
+    btn.addEventListener('click',()=>{
+      modal.querySelectorAll('.emoji-opt').forEach(b=>{b.style.background='var(--surface2)';b.style.borderColor='var(--border)'});
+      btn.style.background='var(--blue-bg)';btn.style.borderColor='var(--blue)';
+      selectedEmoji=btn.dataset.e;
+    });
+  });
 
-    if(editMode){
-      INCOME_ITEMS.forEach(def=>ig.appendChild(makeEditItem(def,'income',d[def.key]||0)));
-      EXPENSES.forEach(def=>eg.appendChild(makeEditItem(def,'expense',d[def.key]||0)));
-    } else {
-      INCOME_ITEMS.forEach(def=>ig.appendChild(makeViewItem(def,'income',!!s.paid[def.key],d[def.key]||0)));
-      EXPENSES.forEach(def=>eg.appendChild(makeViewItem(def,'expense',!!s.paid[def.key],d[def.key]||0)));
+  document.getElementById('modal-close').addEventListener('click',()=>modal.remove());
+  modal.addEventListener('click',(e)=>{if(e.target===modal)modal.remove()});
+
+  document.getElementById('modal-save').addEventListener('click',()=>{
+    const name=document.getElementById('modal-name').value.trim();
+    const amt=parseFloat(document.getElementById('modal-amt').value)||0;
+    if(!name){document.getElementById('modal-name').focus();return;}
+    const key=genKey();
+    const cat=loadCatalog();
+    const newItem={key,label:name,emoji:selectedEmoji};
+    if(type==='income') cat.income.push(newItem);
+    else cat.expenses.push(newItem);
+    saveCatalog(cat);
+    // Save default amount as override for all months
+    if(amt>0){
+      MONTHS.forEach(m=>{
+        const ov=loadOverride(m.key);
+        ov[key]=amt;
+        saveOverride(m.key,ov);
+      });
     }
-
-    renderExtraList(document.getElementById('xinc-list'),s.xInc,'green',mKey,'xInc');
-    renderExtraList(document.getElementById('xexp-list'),s.xExp,'red',mKey,'xExp');
-  }
-
-  // Recalculate totals — read from inputs if in edit mode
-  let totalIncome=0,totalExp=0;
-  const dForCalc=editMode?getLiveEditValues():d;
-
-  INCOME_ITEMS.forEach(def=>{if(s.paid[def.key])totalIncome+=dForCalc[def.key]||0});
-  const xIncTotal=sumList(s.xInc);
-  const xExpTotal=sumList(s.xExp);
-  totalIncome+=xIncTotal;
-  EXPENSES.forEach(def=>{if(s.paid[def.key]&&(dForCalc[def.key]||0)>0)totalExp+=dForCalc[def.key]});
-  totalExp+=xExpTotal;
-
-  const balance=totalIncome-totalExp;
-  const nomina=dForCalc['nomina']||0;
-  const pct=nomina>0?Math.min(100,(totalExp/nomina)*100):0;
-
-  // Save this month's balance so future months can accumulate it
-  if(!editMode){
-    const ms=load(mKey);ms._balance=balance;save(mKey,ms);
-  }
-
-  // Compute accumulated balance from all previous months + this month
-  let accumBalance=0;
-  const firstMonthLabel=MONTHS[0].label;
-  for(let i=0;i<idx;i++){
-    const ps=load(MONTHS[i].key);
-    accumBalance+=ps._balance||0;
-  }
-  accumBalance+=balance;
-
-  document.getElementById('s-income').textContent=fmt(totalIncome);
-  document.getElementById('s-expense').textContent=fmt(totalExp);
-  const balEl=document.getElementById('s-balance');
-  balEl.textContent=(balance>=0?'+':'')+fmt(balance);
-  balEl.className='stat-value '+(balance>=0?'green':balance>-200?'amber':'red');
-
-  const accumEl=document.getElementById('s-balance-accum');
-  accumEl.textContent=(accumBalance>=0?'+':'')+fmt(accumBalance);
-  accumEl.className='stat-value '+(accumBalance>=0?'green':accumBalance>-500?'amber':'red');
-  document.getElementById('s-accum-from').textContent='Acumulado desde '+firstMonthLabel+(idx>0?' · '+idx+' mes'+(idx===1?'':'es')+' anteriores':'');
-  const fill=document.getElementById('prog-fill');
-  fill.style.width=pct.toFixed(1)+'%';
-  fill.className='progress-fill '+(pct<70?'ok':pct<90?'warn':'bad');
-  document.getElementById('prog-pct').textContent=pct.toFixed(0)+'%';
-
-  const paidInc=INCOME_ITEMS.filter(d2=>s.paid[d2.key]).length;
-  const paidExp=EXPENSES.filter(d2=>s.paid[d2.key]&&(dForCalc[d2.key]||0)>0).length;
-  const totalExpItems=EXPENSES.filter(d2=>(dForCalc[d2.key]||0)>0).length;
-  document.getElementById('badge-inc').textContent=paidInc+' / '+INCOME_ITEMS.length;
-  document.getElementById('badge-exp').textContent=paidExp+' / '+totalExpItems;
-  document.getElementById('xinc-total').textContent=fmt(xIncTotal);
-  document.getElementById('xexp-total').textContent=fmt(xExpTotal);
-  document.getElementById('badge-xinc').textContent=fmt(xIncTotal);
-  document.getElementById('badge-xexp').textContent=fmt(xExpTotal);
+    modal.remove();
+    render(true);
+  });
+  setTimeout(()=>document.getElementById('modal-name').focus(),100);
 }
 
-// Read current values from edit inputs
+// ── Read edit inputs ───────────────────────────────────────────────────────
 function getLiveEditValues(){
   const vals={};
   document.querySelectorAll('.item-edit-input').forEach(inp=>{
@@ -590,33 +599,25 @@ function getLiveEditValues(){
   return vals;
 }
 
-// Save edits to localStorage according to scope
+// ── Save edits ─────────────────────────────────────────────────────────────
 function saveEdits(){
   const vals=getLiveEditValues();
   const mKey=MONTHS[idx].key;
-  const currentIdx=idx;
-
   let targetKeys=[];
   if(editScope==='month') targetKeys=[mKey];
-  else if(editScope==='forward') targetKeys=MONTHS.slice(currentIdx).map(m=>m.key);
+  else if(editScope==='forward') targetKeys=MONTHS.slice(idx).map(m=>m.key);
   else if(editScope==='all') targetKeys=MONTHS.map(m=>m.key);
-
   targetKeys.forEach(k=>{
     const existing=loadOverride(k);
-    // Merge: only update keys that differ from builtin to avoid overwriting intentional month-specific values
     const merged=Object.assign({},existing,vals);
     saveOverride(k,merged);
   });
-
-  // Timestamp for current month state
-  const s=load(mKey);
-  save(mKey,s);
+  const s=load(mKey);save(mKey,s);
 }
 
-// Toggle edit mode
+// ── Toggle edit mode ───────────────────────────────────────────────────────
 function toggleEdit(){
   if(editMode){
-    // Exiting edit mode — discard without saving
     editMode=false;
     document.getElementById('edit-toggle').classList.remove('active');
     document.getElementById('edit-banner').classList.remove('visible');
@@ -631,13 +632,113 @@ function toggleEdit(){
   }
 }
 
-// Scope button logic
 function setScope(s){
   editScope=s;
   document.querySelectorAll('.scope-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('scope-'+s).classList.add('active');
 }
 
+// ── Render ─────────────────────────────────────────────────────────────────
+window._renderApp=function(){render(true);};
+function render(rebuild=true){
+  const mKey=MONTHS[idx].key,d=getMD(mKey),s=load(mKey);
+  const cat=loadCatalog();
+  const INCOME_ITEMS=cat.income;
+  const EXPENSES=cat.expenses;
+
+  if(rebuild){
+    document.getElementById('month-sel').value=mKey;
+    document.getElementById('inp-nota').value=s.nota||'';
+    if(s._saved)document.getElementById('last-saved').textContent=s._saved;
+
+    const ig=document.getElementById('income-grid');ig.innerHTML='';
+    const eg=document.getElementById('expense-grid');eg.innerHTML='';
+
+    if(editMode){
+      INCOME_ITEMS.forEach(def=>ig.appendChild(makeEditItem(def,'income',d[def.key]||0,cat)));
+      // Add income button
+      const addIncBtn=document.createElement('div');
+      addIncBtn.className='item add-item-btn';
+      addIncBtn.innerHTML='<div style="font-size:24px;margin-bottom:6px">+</div><div class="item-name">Añadir ingreso</div>';
+      addIncBtn.addEventListener('click',()=>showAddItemModal('income'));
+      ig.appendChild(addIncBtn);
+
+      EXPENSES.forEach(def=>eg.appendChild(makeEditItem(def,'expense',d[def.key]||0,cat)));
+      // Add expense button
+      const addExpBtn=document.createElement('div');
+      addExpBtn.className='item add-item-btn';
+      addExpBtn.innerHTML='<div style="font-size:24px;margin-bottom:6px">+</div><div class="item-name">Añadir gasto</div>';
+      addExpBtn.addEventListener('click',()=>showAddItemModal('expense'));
+      eg.appendChild(addExpBtn);
+    } else {
+      if(INCOME_ITEMS.length===0){
+        ig.innerHTML='<div class="empty-list" style="padding:14px 0;color:var(--text3);font-size:13px">Activa "Editar importes" para añadir ingresos</div>';
+      } else {
+        INCOME_ITEMS.forEach(def=>ig.appendChild(makeViewItem(def,'income',!!s.paid[def.key],d[def.key]||0)));
+      }
+      if(EXPENSES.length===0){
+        eg.innerHTML='<div class="empty-list" style="padding:14px 0;color:var(--text3);font-size:13px">Activa "Editar importes" para añadir gastos</div>';
+      } else {
+        EXPENSES.forEach(def=>eg.appendChild(makeViewItem(def,'expense',!!s.paid[def.key],d[def.key]||0)));
+      }
+    }
+
+    renderExtraList(document.getElementById('xinc-list'),s.xInc,'green',mKey,'xInc');
+    renderExtraList(document.getElementById('xexp-list'),s.xExp,'red',mKey,'xExp');
+  }
+
+  // Recalculate totals
+  let totalIncome=0,totalExp=0;
+  const cat2=loadCatalog();
+  const INC=cat2.income;
+  const EXP=cat2.expenses;
+  const dForCalc=editMode?getLiveEditValues():d;
+
+  INC.forEach(def=>{if(s.paid[def.key]) totalIncome+=dForCalc[def.key]||0});
+  const xIncTotal=sumList(s.xInc);
+  const xExpTotal=sumList(s.xExp);
+  totalIncome+=xIncTotal;
+  EXP.forEach(def=>{if(s.paid[def.key]) totalExp+=dForCalc[def.key]||0});
+  totalExp+=xExpTotal;
+
+  const balance=totalIncome-totalExp;
+  const firstIncome=INC[0]?dForCalc[INC[0].key]||0:0;
+  const pct=firstIncome>0?Math.min(100,(totalExp/firstIncome)*100):0;
+
+  if(!editMode){
+    const ms=load(mKey);ms._balance=balance;save(mKey,ms);
+  }
+
+  let accumBalance=0;
+  for(let i=0;i<idx;i++){
+    const ps=load(MONTHS[i].key);
+    accumBalance+=ps._balance||0;
+  }
+  accumBalance+=balance;
+
+  document.getElementById('s-income').textContent=fmt(totalIncome);
+  document.getElementById('s-expense').textContent=fmt(totalExp);
+  const balEl=document.getElementById('s-balance');
+  balEl.textContent=(balance>=0?'+':'')+fmt(balance);
+  balEl.className='stat-value '+(balance>=0?'green':balance>-200?'amber':'red');
+  const accumEl=document.getElementById('s-balance-accum');
+  accumEl.textContent=(accumBalance>=0?'+':'')+fmt(accumBalance);
+  accumEl.className='stat-value '+(accumBalance>=0?'green':accumBalance>-500?'amber':'red');
+  const firstMonthLabel=MONTHS[0].label;
+  document.getElementById('s-accum-from').textContent='Acumulado desde '+firstMonthLabel+(idx>0?' · '+idx+' mes'+(idx===1?'':\'es')+' anteriores':'');
+  const fill=document.getElementById('prog-fill');
+  fill.style.width=pct.toFixed(1)+'%';
+  fill.className='progress-fill '+(pct<70?'ok':pct<90?'warn':'bad');
+  document.getElementById('prog-pct').textContent=pct.toFixed(0)+'%';
+  document.getElementById('badge-inc').textContent=INC.filter(d2=>s.paid[d2.key]).length+' / '+INC.length;
+  document.getElementById('badge-exp').textContent=EXP.filter(d2=>s.paid[d2.key]).length+' / '+EXP.length;
+  document.getElementById('xinc-total').textContent=fmt(xIncTotal);
+  document.getElementById('xexp-total').textContent=fmt(xExpTotal);
+  document.getElementById('badge-xinc').textContent=fmt(xIncTotal);
+  document.getElementById('badge-xexp').textContent=fmt(xExpTotal);
+}
+
+// ── Event listeners ────────────────────────────────────────────────────────
 document.getElementById('scope-month').addEventListener('click',()=>setScope('month'));
 document.getElementById('scope-forward').addEventListener('click',()=>setScope('forward'));
 document.getElementById('scope-all').addEventListener('click',()=>setScope('all'));
@@ -649,7 +750,6 @@ document.getElementById('save-edits').addEventListener('click',()=>{
   document.getElementById('edit-banner').classList.remove('visible');
   document.getElementById('scope-bar').classList.remove('visible');
   render(true);
-  // Flash confirmation
   const btn=document.getElementById('edit-toggle');
   btn.style.background='var(--green-bg)';btn.style.color='var(--green)';btn.style.borderColor='var(--green-border)';
   btn.textContent='✓ Guardado';
@@ -678,7 +778,7 @@ document.getElementById('xexp-add').addEventListener('click',()=>addExtra('xExp'
 const sel=document.getElementById('month-sel');
 MONTHS.forEach(m=>{const o=document.createElement('option');o.value=m.key;o.textContent=m.label;sel.appendChild(o)});
 sel.addEventListener('change',()=>{
-  if(editMode){saveEdits()} // auto-save before changing month in edit mode
+  if(editMode){saveEdits()}
   idx=MONTHS.findIndex(m=>m.key===sel.value);render(true);
 });
 document.getElementById('prev').addEventListener('click',()=>{if(idx>0){if(editMode)saveEdits();idx--;sel.value=MONTHS[idx].key;render(true)}});
@@ -687,12 +787,12 @@ document.getElementById('inp-nota').addEventListener('input',e=>{const s=load(MO
 
 render(true);
 
-// Export: collect all localStorage keys related to this app
+// ── Export / Import ────────────────────────────────────────────────────────
 document.getElementById('btn-export').addEventListener('click',()=>{
   const data={};
   for(let i=0;i<localStorage.length;i++){
     const k=localStorage.key(i);
-    if(k.startsWith('hipo_')){
+    if(k&&k.startsWith('hipo_')){
       try{data[k]=JSON.parse(localStorage.getItem(k))}catch(e){data[k]=localStorage.getItem(k)}
     }
   }
@@ -705,7 +805,6 @@ document.getElementById('btn-export').addEventListener('click',()=>{
   URL.revokeObjectURL(url);
 });
 
-// Import: load JSON file and restore all keys
 document.getElementById('btn-import').addEventListener('change',function(){
   const file=this.files[0];if(!file)return;
   const fb=document.getElementById('import-feedback');
@@ -726,7 +825,7 @@ document.getElementById('btn-import').addEventListener('change',function(){
       setTimeout(()=>location.reload(),1500);
     }catch(err){
       fb.className='import-feedback err';
-      fb.textContent='✗ Error al leer el archivo. Asegúrate de que es un archivo exportado desde esta app.';
+      fb.textContent='✗ Error al leer el archivo.';
       fb.style.display='block';
     }
   };
@@ -734,91 +833,27 @@ document.getElementById('btn-import').addEventListener('change',function(){
   this.value='';
 });
 
-// ── PWA: inline manifest & service worker ──────────────────────────────────
+// ── PWA ────────────────────────────────────────────────────────────────────
 (function(){
-  // SVG icon as data URI (house icon)
-  const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="100" fill="#2E7D52"/><path d="M256 120 L420 270 L390 270 L390 400 L310 400 L310 310 L202 310 L202 400 L122 400 L122 270 L92 270 Z" fill="white"/></svg>`;
-  const iconUrl = 'data:image/svg+xml,' + encodeURIComponent(iconSvg);
-
-  // Inject apple touch icon
-  document.getElementById('pwa-icon').href = iconUrl;
-
-  // Build and inject manifest
-  const manifest = {
-    name: 'Gestor Hipoteca',
-    short_name: 'Hipoteca',
-    description: 'Gestiona los gastos e ingresos de tu hipoteca mes a mes',
-    start_url: '.',
-    display: 'standalone',
-    background_color: '#F7F6F2',
-    theme_color: '#2E7D52',
-    orientation: 'portrait',
-    icons: [
-      { src: iconUrl, sizes: '192x192', type: 'image/svg+xml', purpose: 'any maskable' },
-      { src: iconUrl, sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' }
-    ]
-  };
-  const manifestBlob = new Blob([JSON.stringify(manifest)], {type:'application/json'});
-  document.getElementById('pwa-manifest').href = URL.createObjectURL(manifestBlob);
-
-  // Register inline service worker for offline support
+  const iconSvg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="100" fill="#2E7D52"/><path d="M256 120 L420 270 L390 270 L390 400 L310 400 L310 310 L202 310 L202 400 L122 400 L122 270 L92 270 Z" fill="white"/></svg>`;
+  const iconUrl='data:image/svg+xml,'+encodeURIComponent(iconSvg);
+  document.getElementById('pwa-icon').href=iconUrl;
+  const manifest={name:'Gestor Hipoteca',short_name:'Hipoteca',description:'Gestiona los gastos e ingresos de tu hipoteca mes a mes',start_url:'.',display:'standalone',background_color:'#F7F6F2',theme_color:'#2E7D52',orientation:'portrait',icons:[{src:iconUrl,sizes:'192x192',type:'image/svg+xml',purpose:'any maskable'},{src:iconUrl,sizes:'512x512',type:'image/svg+xml',purpose:'any maskable'}]};
+  const manifestBlob=new Blob([JSON.stringify(manifest)],{type:'application/json'});
+  document.getElementById('pwa-manifest').href=URL.createObjectURL(manifestBlob);
   if('serviceWorker' in navigator){
-    const swCode = `
-const CACHE = 'hipoteca-v1';
-self.addEventListener('install', e => {
-  self.skipWaiting();
-});
-self.addEventListener('activate', e => {
-  e.waitUntil(clients.claim());
-});
-self.addEventListener('fetch', e => {
-  // Cache-first for same-origin, network-first otherwise
-  if(e.request.url.startsWith(self.location.origin)){
-    e.respondWith(
-      caches.open(CACHE).then(cache =>
-        cache.match(e.request).then(cached => {
-          const fetched = fetch(e.request).then(resp => {
-            cache.put(e.request, resp.clone());
-            return resp;
-          }).catch(() => cached);
-          return cached || fetched;
-        })
-      )
-    );
+    const swCode=`const CACHE='hipoteca-v1';self.addEventListener('install',e=>{self.skipWaiting()});self.addEventListener('activate',e=>{e.waitUntil(clients.claim())});self.addEventListener('fetch',e=>{if(e.request.url.startsWith(self.location.origin)){e.respondWith(caches.open(CACHE).then(cache=>cache.match(e.request).then(cached=>{const fetched=fetch(e.request).then(resp=>{cache.put(e.request,resp.clone());return resp}).catch(()=>cached);return cached||fetched})))}});`;
+    const swBlob=new Blob([swCode],{type:'text/javascript'});
+    navigator.serviceWorker.register(URL.createObjectURL(swBlob),{type:'classic'}).catch(e=>console.log('SW:',e));
   }
-});
-`;
-    const swBlob = new Blob([swCode], {type:'text/javascript'});
-    const swUrl = URL.createObjectURL(swBlob);
-    navigator.serviceWorker.register(swUrl, {type:'classic'})
-      .then(() => console.log('SW registered'))
-      .catch(e => console.log('SW error:', e));
-  }
-
-  // Show install prompt banner
-  let deferredPrompt = null;
-  window.addEventListener('beforeinstallprompt', e => {
-    e.preventDefault();
-    deferredPrompt = e;
-    const banner = document.getElementById('install-banner');
-    if(banner) banner.style.display = 'flex';
-  });
-  window.addEventListener('appinstalled', () => {
-    const banner = document.getElementById('install-banner');
-    if(banner) banner.style.display = 'none';
-    deferredPrompt = null;
-  });
-  document.addEventListener('click', e => {
-    if(e.target.id === 'install-btn' && deferredPrompt){
-      deferredPrompt.prompt();
-      deferredPrompt.userChoice.then(() => { deferredPrompt = null; });
-    }
-    if(e.target.id === 'install-dismiss'){
-      document.getElementById('install-banner').style.display = 'none';
-    }
+  let deferredPrompt=null;
+  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;const b=document.getElementById('install-banner');if(b)b.style.display='flex'});
+  window.addEventListener('appinstalled',()=>{const b=document.getElementById('install-banner');if(b)b.style.display='none';deferredPrompt=null});
+  document.addEventListener('click',e=>{
+    if(e.target.id==='install-btn'&&deferredPrompt){deferredPrompt.prompt();deferredPrompt.userChoice.then(()=>{deferredPrompt=null})}
+    if(e.target.id==='install-dismiss'){document.getElementById('install-banner').style.display='none'}
   });
 })();
-
 </script>
 </body>
 </html>
