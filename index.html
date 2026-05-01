@@ -441,17 +441,34 @@ function saveOverride(k,ov){
 
 // ── Dynamic catalog of income/expense items ────────────────────────────────
 const DEFAULT_CATALOG = {
-  income: [{key:'nomina',label:'Nómina',emoji:'💼'}],
-  expenses: []
+  income: [
+    {key:'nomina',label:'Nómina',emoji:'💼'}
+  ],
+  expenses: [
+    {key:'hipoteca',label:'Hipoteca / Alquiler',emoji:'🏠'},
+    {key:'agua',label:'Agua',emoji:'💧'},
+    {key:'luz',label:'Luz',emoji:'💡'},
+    {key:'comunidad',label:'Comunidad',emoji:'🏢'},
+    {key:'comida',label:'Comida',emoji:'🛒'}
+  ]
 };
 const EMOJI_LIST=['🏠','⛽','📡','💧','💡','🏢','💳','🏍️','🔒','🛒','🛡️','🚗','✈️','🎓','💊','📱','🐾','🎬','🏋️','💰','🧾','🔧','🌐','🍔','☕'];
 
 function loadCatalog(){
   try{
     const s=localStorage.getItem(catalogKey());
-    if(s){const c=JSON.parse(s);return{income:c.income||DEFAULT_CATALOG.income,expenses:c.expenses||DEFAULT_CATALOG.expenses};}
+    if(s){
+      const c=JSON.parse(s);
+      // If both lists exist (even if empty) return as-is; otherwise seed defaults
+      if(c.hasOwnProperty('income')&&c.hasOwnProperty('expenses')){
+        return{income:c.income,expenses:c.expenses};
+      }
+    }
   }catch(e){}
-  return JSON.parse(JSON.stringify(DEFAULT_CATALOG));
+  // First time: save and return defaults
+  const def=JSON.parse(JSON.stringify(DEFAULT_CATALOG));
+  saveCatalog(def);
+  return def;
 }
 function saveCatalog(cat){
   try{localStorage.setItem(catalogKey(),JSON.stringify(cat));}catch(e){}
