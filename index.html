@@ -405,21 +405,8 @@ const MONTHS=[
 ];
 
 // Built-in base data per month (from Excel)
-const BUILTIN={
-  '2026-01':{nomina:1315.49,hipoteca:435.22,gasolina:140,internet:0,agua:0,luz:0,escalera:55,prestamo:267.84,moto:192.25,alarma:52,comida:0,seguro:19.86},
-  '2026-02':{nomina:1338.55,hipoteca:405.32,gasolina:140,internet:0,agua:256.46,luz:0,escalera:55,prestamo:267.84,moto:0,alarma:52,comida:0,seguro:19.86},
-  '2026-03':{nomina:1338.55,hipoteca:405.32,gasolina:140,internet:0,agua:3.40,luz:0,escalera:55,prestamo:267.84,moto:192.25,alarma:52,comida:0,seguro:19.86},
-  '2026-04':{nomina:1338.55,hipoteca:405.32,gasolina:140,internet:0,agua:0,luz:0,escalera:55,prestamo:267.84,moto:192.25,alarma:52,comida:0,seguro:19.86},
-  '2026-05':{nomina:1338.55,hipoteca:405.32,gasolina:140,internet:0,agua:35,luz:0,escalera:55,prestamo:267.84,moto:192.25,alarma:37,comida:0,seguro:19.86},
-  '2026-06':{nomina:1338.55,hipoteca:405.32,gasolina:140,internet:0,agua:0,luz:0,escalera:55,prestamo:267.84,moto:192.25,alarma:37,comida:0,seguro:19.86},
-  '2026-07':{nomina:1338.55,hipoteca:405.32,gasolina:140,internet:10,agua:35,luz:80,escalera:25,prestamo:267.84,moto:192.25,alarma:37,comida:250,seguro:19.86},
-  '2026-08':{nomina:1338.55,hipoteca:405.32,gasolina:140,internet:10,agua:0,luz:80,escalera:25,prestamo:267.84,moto:192.25,alarma:37,comida:250,seguro:19.86},
-  '2026-09':{nomina:1338.55,hipoteca:405.32,gasolina:140,internet:10,agua:35,luz:80,escalera:25,prestamo:267.84,moto:192.25,alarma:37,comida:250,seguro:19.86},
-  '2026-10':{nomina:1338.55,hipoteca:405.32,gasolina:140,internet:10,agua:0,luz:80,escalera:25,prestamo:267.84,moto:192.25,alarma:37,comida:250,seguro:19.86},
-  '2026-11':{nomina:1338.55,hipoteca:405.32,gasolina:140,internet:10,agua:35,luz:80,escalera:25,prestamo:267.84,moto:0,alarma:37,comida:250,seguro:19.86},
-  '2026-12':{nomina:1338.55,hipoteca:405.32,gasolina:140,internet:10,agua:0,luz:80,escalera:25,prestamo:267.84,moto:0,alarma:37,comida:250,seguro:19.86},
-};
-const BASE_FALLBACK={hipoteca:405.32,gasolina:140,internet:10,agua:35,luz:80,escalera:25,prestamo:267.84,moto:192.25,alarma:37,comida:250,seguro:19.86,nomina:1338.55};
+const BUILTIN={};
+const BASE_FALLBACK={hipoteca:0,gasolina:0,internet:0,agua:0,luz:0,escalera:0,prestamo:0,moto:0,alarma:0,comida:0,seguro:0,nomina:0};
 
 const EXPENSES=[
   {key:'hipoteca',label:'Hipoteca',emoji:'🏠'},{key:'gasolina',label:'Gasolina',emoji:'⛽'},
