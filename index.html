@@ -151,6 +151,109 @@ textarea.note-input::placeholder{color:var(--text3)}
   .save-month-btn{margin-left:0;margin-top:4px;width:100%}
 }
 </style>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+  apiKey: "AIzaSyBIayppfoi9s9dIjVyB16Y-zTii1wYKkQk",
+  authDomain: "gestor-hipoteca.firebaseapp.com",
+  projectId: "gestor-hipoteca",
+  storageBucket: "gestor-hipoteca.firebasestorage.app",
+  messagingSenderId: "142950260440",
+  appId: "1:142950260440:web:7854382f625f761d1ec1ad"
+};
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  const provider = new GoogleAuthProvider();
+
+  let currentUser = null;
+  let unsubscribeFirestore = null;
+
+  // Expose to global scope for the main script
+  window._fb = { auth, db, provider, signInWithPopup, signOut, onAuthStateChanged, doc, setDoc, getDoc, onSnapshot };
+
+  // Auth state listener
+  onAuthStateChanged(auth, user => {
+    currentUser = user;
+    window._fbUser = user;
+    updateAuthUI(user);
+    if(user) {
+      subscribeToFirestore(user.uid);
+    } else {
+      if(unsubscribeFirestore) { unsubscribeFirestore(); unsubscribeFirestore = null; }
+    }
+  });
+
+  function updateAuthUI(user) {
+    const bar = document.getElementById('auth-bar');
+    const loginBtn = document.getElementById('auth-login');
+    const logoutBtn = document.getElementById('auth-logout');
+    const userName = document.getElementById('auth-username');
+    if(!bar) return;
+    if(user) {
+      loginBtn.style.display = 'none';
+      logoutBtn.style.display = 'inline-flex';
+      userName.textContent = user.displayName || user.email;
+      bar.style.background = 'var(--green-bg)';
+      bar.style.borderColor = 'var(--green-border)';
+      bar.style.color = 'var(--green)';
+      document.getElementById('auth-status').textContent = '☁️ Sincronizado con la nube';
+    } else {
+      loginBtn.style.display = 'inline-flex';
+      logoutBtn.style.display = 'none';
+      userName.textContent = '';
+      bar.style.background = 'var(--surface2)';
+      bar.style.borderColor = 'var(--border)';
+      bar.style.color = 'var(--text2)';
+      document.getElementById('auth-status').textContent = '💾 Solo local (inicia sesión para sincronizar)';
+    }
+  }
+
+  function subscribeToFirestore(uid) {
+    const ref = doc(db, 'users', uid, 'data', 'hipoteca');
+    unsubscribeFirestore = onSnapshot(ref, snap => {
+      if(snap.exists()) {
+        const data = snap.data();
+        // Restore all keys to localStorage
+        Object.entries(data).forEach(([k,v]) => {
+          localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        if(window._renderApp) window._renderApp();
+      }
+    });
+  }
+
+  // Save all hipo_ localStorage keys to Firestore
+  window._saveToCloud = async function() {
+    const user = window._fbUser;
+    if(!user) return;
+    const data = {};
+    for(let i=0; i<localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if(k && k.startsWith('hipo_')) {
+        try { data[k] = JSON.parse(localStorage.getItem(k)); }
+        catch(e) { data[k] = localStorage.getItem(k); }
+      }
+    }
+    const ref = doc(db, 'users', user.uid, 'data', 'hipoteca');
+    await setDoc(ref, data, {merge: true});
+  };
+
+  // Login/logout button handlers
+  document.addEventListener('click', async e => {
+    if(e.target.id === 'auth-login') {
+      try { await signInWithPopup(auth, provider); }
+      catch(err) { console.error(err); }
+    }
+    if(e.target.id === 'auth-logout') {
+      await signOut(auth);
+    }
+  });
+</script>
 </head>
 <body>
 <div id="install-banner" style="display:none;align-items:center;gap:10px;padding:12px 16px;background:var(--green-bg);border-bottom:.5px solid var(--green-border);font-size:13px;color:var(--green);position:sticky;top:0;z-index:20">
@@ -158,6 +261,12 @@ textarea.note-input::placeholder{color:var(--text3)}
   <span style="flex:1;font-weight:500">Instala la app para acceder sin internet</span>
   <button id="install-btn" style="padding:6px 14px;border-radius:20px;border:none;background:var(--green);color:#fff;font-size:12px;font-weight:600;cursor:pointer">Instalar</button>
   <button id="install-dismiss" style="width:26px;height:26px;border-radius:50%;border:.5px solid var(--green-border);background:transparent;color:var(--green);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">×</button>
+</div>
+<div id="auth-bar" style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--surface2);border-bottom:.5px solid var(--border);font-size:13px;color:var(--text2)">
+  <span id="auth-status" style="flex:1">💾 Solo local (inicia sesión para sincronizar)</span>
+  <span id="auth-username" style="font-size:12px;color:var(--text3);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+  <button id="auth-login" style="padding:6px 14px;border-radius:20px;border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px"><span>G</span> Iniciar sesión</button>
+  <button id="auth-logout" style="display:none;padding:6px 14px;border-radius:20px;border:.5px solid var(--border2);background:transparent;color:var(--text2);font-size:12px;font-weight:500;cursor:pointer">Cerrar sesión</button>
 </div>
 <header>
   <div class="header-left">
@@ -341,6 +450,7 @@ function save(k,s){
     localStorage.setItem(stKey(k),JSON.stringify(s));
     document.getElementById('last-saved').textContent=s._saved;
   }catch(e){}
+  if(window._saveToCloud) window._saveToCloud();
 }
 
 // Get overrides for a month (user-edited values)
@@ -350,6 +460,7 @@ function loadOverride(k){
 }
 function saveOverride(k,ov){
   try{localStorage.setItem(overrideKey(k),JSON.stringify(ov))}catch(e){}
+  if(window._saveToCloud) window._saveToCloud();
 }
 
 // Get effective data for a month: builtin merged with overrides
@@ -405,6 +516,7 @@ function makeEditItem(def,type,currentAmt){
   return div;
 }
 
+window._renderApp=function(){render(true);};
 function render(rebuild=true){
   const mKey=MONTHS[idx].key,d=getMD(mKey),s=load(mKey);
   if(rebuild){
