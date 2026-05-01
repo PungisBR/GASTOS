@@ -478,7 +478,10 @@ function loadCatalog(){
 }
 function saveCatalog(cat){
   try{localStorage.setItem(catalogKey(),JSON.stringify(cat));}catch(e){}
-  if(window._saveToCloud) window._saveToCloud();
+  // Only sync to cloud if catalog has actual items
+  if((cat.income&&cat.income.length>0)||(cat.expenses&&cat.expenses.length>0)){
+    if(window._saveToCloud) window._saveToCloud();
+  }
 }
 
 // ── Effective data for a month ─────────────────────────────────────────────
