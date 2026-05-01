@@ -110,6 +110,8 @@ header{background:var(--surface);border-bottom:.5px solid var(--border);padding:
 .add-extra-btn.ibtn:active{background:var(--green-bg);color:var(--green)}
 .add-extra-btn.ebtn:active{background:var(--red-bg);color:var(--red)}
 .empty-list{padding:14px 16px;font-size:13px;color:var(--text3);text-align:center}
+.quick-add-btn{padding:4px 10px;border-radius:20px;border:.5px solid var(--blue-border);background:var(--blue-bg);color:var(--blue);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.quick-add-btn:active{opacity:.75}
 .note-card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--radius);overflow:hidden}
 .note-row{display:flex;align-items:flex-start;gap:12px;padding:14px 16px}
 textarea.note-input{flex:1;min-height:60px;resize:vertical;border:none;background:transparent;color:var(--text);font-size:14px;line-height:1.5;font-family:inherit}
@@ -311,10 +313,18 @@ document.addEventListener('click', async e => {
     <button class="save-month-btn" id="save-edits">Guardar ✓</button>
   </div>
 
-  <div class="section-header"><h2>Ingresos</h2><hr><span class="badge" id="badge-inc">0 / 0</span></div>
+  <div class="section-header">
+    <h2>Ingresos</h2><hr>
+    <span class="badge" id="badge-inc">0 / 0</span>
+    <button class="quick-add-btn" id="quick-add-income">+ Añadir ingreso</button>
+  </div>
   <div class="items" id="income-grid"></div>
 
-  <div class="section-header"><h2>Gastos fijos</h2><hr><span class="badge" id="badge-exp">0 / 0</span></div>
+  <div class="section-header">
+    <h2>Gastos fijos</h2><hr>
+    <span class="badge" id="badge-exp">0 / 0</span>
+    <button class="quick-add-btn" id="quick-add-expense">+ Añadir gasto fijo</button>
+  </div>
   <div class="items" id="expense-grid"></div>
 
   <div class="section-header" style="margin-top:24px">
@@ -794,6 +804,10 @@ document.getElementById('btn-import').onchange = function(){
     if(e.target.id==='install-dismiss'){ document.getElementById('install-banner').style.display='none'; }
   });
 })();
+
+// ── Quick-add buttons ─────────────────────────────────────────────────────
+document.getElementById('quick-add-income').onclick = () => openModal('income');
+document.getElementById('quick-add-expense').onclick = () => openModal('expense');
 
 render(true);
 </script>
