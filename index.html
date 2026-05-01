@@ -394,6 +394,14 @@ textarea.note-input::placeholder{color:var(--text3)}
       </label>
     </div>
     <div id="import-feedback" class="import-feedback" style="display:none"></div>
+    <div class="sync-divider"></div>
+    <div class="sync-row">
+      <div class="sync-info">
+        <div class="sync-title">🔄 Restablecer partidas</div>
+        <div class="sync-desc">Si no ves las partidas por defecto, pulsa aquí para restaurarlas</div>
+      </div>
+      <button class="sync-btn" id="btn-reset-catalog" style="background:var(--amber-bg);border-color:var(--amber);color:var(--amber)">Restablecer</button>
+    </div>
   </div>
 </div>
 
@@ -416,7 +424,7 @@ let editScope='month';
 // ── Storage ────────────────────────────────────────────────────────────────
 function stKey(k){return 'hipo_v3_'+k}
 function overrideKey(k){return 'hipo_ov_'+k}
-function catalogKey(){return 'hipo_catalog'}
+function catalogKey(){return 'hipo_catalog_v2'}
 
 function load(k){
   try{const s=localStorage.getItem(stKey(k));return s?JSON.parse(s):{paid:{},xInc:[],xExp:[],nota:''}}
@@ -459,13 +467,11 @@ function loadCatalog(){
     const s=localStorage.getItem(catalogKey());
     if(s){
       const c=JSON.parse(s);
-      // If both lists exist (even if empty) return as-is; otherwise seed defaults
-      if(c.hasOwnProperty('income')&&c.hasOwnProperty('expenses')){
+      if(c&&Array.isArray(c.income)&&Array.isArray(c.expenses)&&(c.income.length>0||c.expenses.length>0)){
         return{income:c.income,expenses:c.expenses};
       }
     }
   }catch(e){}
-  // First time: save and return defaults
   const def=JSON.parse(JSON.stringify(DEFAULT_CATALOG));
   saveCatalog(def);
   return def;
@@ -593,13 +599,14 @@ function showAddItemModal(type){
     if(type==='income') cat.income.push(newItem);
     else cat.expenses.push(newItem);
     saveCatalog(cat);
-    // Save default amount as override for all months
+    // Save amount as override for all months
     if(amt>0){
       MONTHS.forEach(m=>{
         const ov=loadOverride(m.key);
         ov[key]=amt;
-        saveOverride(m.key,ov);
+        localStorage.setItem(overrideKey(m.key),JSON.stringify(ov));
       });
+      if(window._saveToCloud) window._saveToCloud();
     }
     modal.remove();
     render(true);
@@ -848,6 +855,14 @@ document.getElementById('btn-import').addEventListener('change',function(){
   };
   reader.readAsText(file);
   this.value='';
+});
+
+// ── Reset catalog ─────────────────────────────────────────────────────────
+document.getElementById('btn-reset-catalog').addEventListener('click',()=>{
+  if(confirm('¿Restablecer las partidas por defecto? No se borrarán tus importes ni datos de meses.')){
+    localStorage.removeItem(catalogKey());
+    render(true);
+  }
 });
 
 // ── PWA ────────────────────────────────────────────────────────────────────
